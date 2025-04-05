@@ -7,13 +7,12 @@ VERSION = "01"
 
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import text
-from flask import request
+from flask import request, jsonify
 import json
 from flask import render_template
 import requests
 from flask import redirect
-from datetime import datetime as DateTime
-from sqlalchemy.sql import or_
+
 
 db_name = 'note.db'
 # how do we connect to the database ?
@@ -62,11 +61,12 @@ def create_note():
     # with the 3 fields name email and nickname
     try:
         parameters = json.loads(request.data)
+        id=parameters['id']
         title = parameters['title']
         content = parameters['content']
         done = parameters.get('done') == 'true'
         
-        new_note = Note(title=title, content=content, done=done)
+        new_note = Note(id=id, title=title, content=content, done=done)
         db.session.add(new_note)
         db.session.commit()
         return parameters
@@ -77,8 +77,63 @@ def create_note():
 def list_notes():
     notes = Note.query.all()
     return [dict(
-            title=note.title, content=note.content, done=note.done)
+            id= note.id, title=note.title, content=note.content, done=note.done)
         for note in notes]
+
+@app.route('/front/notes')
+def front_notes():
+  
+    url = request.url_root + '/api/notes'
+    req = requests.get(url)
+    if not (200 <= req.status_code < 300):
+        # return render_template('errors.html', error='...')
+        return dict(error=f"could not request notes list", url=url,
+                    status=req.status_code, text=req.text)
+    notes = req.json()
+    return render_template('notes.html.j2', notes=notes, version=VERSION)
+
+@app.route('/api/notes/<int:id>/done',methods=['POST'])
+def note_done(id):
+    try :
+        note= Note.query.get(id)
+        if not note:
+            return jsonify(error="there is not note"), 404
+        
+        data=request.get_json()
+        done_value=data.get("done")
+
+        # we modifie the object in memory
+        note.done=done_value
+        
+        # we commit the modification
+        db.session.commit()
+
+        # we respond ok to the JS code (script.js)
+        return jsonify(ok=True)
+    
+    except Exception as exc:
+        return jsonify(error=f"{type(exc).__name__}: {exc}"), 422
+
+@app.route('/api/notes/<int:id>', methods=['DELETE'])
+def delete_note(id):
+    try:
+    
+        note = Note.query.get(id)
+        
+        if not note:
+            return jsonify(error="Note not found"), 404
+        
+        # We delete the note
+        db.session.delete(note)
+        
+        # We commit
+        db.session.commit()
+        
+        return jsonify(message="Note deleted successfully"), 200
+    except Exception as exc:
+        
+        return jsonify(error=f"{type(exc).__name__}: {exc}"), 422
+
 
 if __name__ == '__main__':
     app.run()
