@@ -1,10 +1,4 @@
 from flask import Flask
-
-## usual Flask initilization
-app = Flask(__name__)
-VERSION = "01"
-
-
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import text
 from flask import request, jsonify
@@ -12,6 +6,14 @@ import json
 from flask import render_template
 import requests
 from flask import redirect
+from flask_socketio import SocketIO
+
+## usual Flask initilization
+app = Flask(__name__)
+VERSION = "01"
+socketio = SocketIO(app)
+
+
 
 
 db_name = 'note.db'
@@ -69,6 +71,7 @@ def create_note():
         new_note = Note(id=id, title=title, content=content, done=done)
         db.session.add(new_note)
         db.session.commit()
+        socketio.emit('note-updated', json.dumps(parameters, default=str))
         return parameters
     except Exception as exc:
         return dict(error=f"{type(exc)}: {exc}"), 422
@@ -90,29 +93,8 @@ def front_notes():
         return dict(error=f"could not request notes list", url=url,
                     status=req.status_code, text=req.text)
     notes = req.json()
-    return render_template('notes.html.j2', notes=notes, version=VERSION)
+    return render_template('notes.html.j2', notes=notes,  version=VERSION)
 
-@app.route('/api/notes/<int:id>/done',methods=['POST'])
-def note_done(id):
-    try :
-        note= Note.query.get(id)
-        if not note:
-            return jsonify(error="there is not note"), 404
-        
-        data=request.get_json()
-        done_value=data.get("done")
-
-        # we modifie the object in memory
-        note.done=done_value
-        
-        # we commit the modification
-        db.session.commit()
-
-        # we respond ok to the JS code (script.js)
-        return jsonify(ok=True)
-    
-    except Exception as exc:
-        return jsonify(error=f"{type(exc).__name__}: {exc}"), 422
 
 @app.route('/api/notes/<int:id>', methods=['DELETE'])
 def delete_note(id):
@@ -135,5 +117,27 @@ def delete_note(id):
         return jsonify(error=f"{type(exc).__name__}: {exc}"), 422
 
 
+@app.route('/api/notes/<int:id>/done', methods=['POST'])
+def update_note_done(id):
+    note = Note.query.get(id)  
+    if not note:
+        return jsonify({"ok": False, "status": "not found"}), 404
+
+    done = request.json.get('done', False)
+    note.done = done
+    db.session.commit()
+
+    # Diffusion via Socket.IO
+    socketio.emit('note-updated', {
+        'id': note.id,
+        'done': note.done
+    })
+
+    return jsonify({"ok": True})
+
+@socketio.on('connect-ack') # the decorator is @socketio.on instead of @app.route
+def connect_ack(message): #connect_ack is the name of the channel
+    print(f'received ACK message: {message} of type {type(message)}')
+
 if __name__ == '__main__':
-    app.run()
+    socketio.run(app, debug=True,allow_unsafe_werkzeug=True)
