@@ -6,14 +6,14 @@ document.addEventListener(
     console.log("connecting to the SocketIO backend")
     const socket = io()
 
-    // Réception d'une mise à jour
+    // We receive the info that the note is updated 
     socket.on("note-updated", (note) => {
     const { id, done } = note
     const checkbox = document.querySelector(`input[type="checkbox"][data-id="${id}"]`)
     if (checkbox) checkbox.checked = done
     })
 
-    // Pour chaque checkbox, on envoie une requête au serveur quand on la change
+    // For each checkbox, we send a request to the server to change it.
     document.querySelectorAll('input[type="checkbox"].done-checkbox').forEach((checkbox) => {
       checkbox.addEventListener("change", () => {
         const id = checkbox.dataset.id

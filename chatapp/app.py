@@ -71,7 +71,6 @@ def create_note():
         new_note = Note(id=id, title=title, content=content, done=done)
         db.session.add(new_note)
         db.session.commit()
-        socketio.emit('note-updated', json.dumps(parameters, default=str))
         return parameters
     except Exception as exc:
         return dict(error=f"{type(exc)}: {exc}"), 422
@@ -127,7 +126,7 @@ def update_note_done(id):
     note.done = done
     db.session.commit()
 
-    # Diffusion via Socket.IO
+    # We send to all the browsers connected the note updated
     socketio.emit('note-updated', {
         'id': note.id,
         'done': note.done
